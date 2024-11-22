@@ -42,30 +42,46 @@ void Rede::adicionarConexao(int deNo, int paraNo, float peso) {
 }
 
 void Rede::mutar() {
-    // Aumentar drasticamente as chances de mutação para promover diversidade
-    const float CHANCE_MUTAR_PESO = 0.8f;      // 80% chance de mutar pesos
-    const float CHANCE_NOVO_NO = 0.1f;         // 10% chance de adicionar nó
-    const float CHANCE_NOVA_CONEXAO = 0.15f;   // 15% chance de adicionar conexão
-    
     // Mutação de pesos
-    if ((float)rand() / RAND_MAX < CHANCE_MUTAR_PESO) {
+    if ((float)rand() / RAND_MAX < ConfiguracaoNEAT::CHANCE_PESO_PERTURBADO) {
         mutarPesos();
     }
     
-    // Mutação estrutural - novo nó
-    if ((float)rand() / RAND_MAX < CHANCE_NOVO_NO) {
+    // Mutação estrutural - adicionar nó
+    if ((float)rand() / RAND_MAX < ConfiguracaoNEAT::CHANCE_NOVO_NO && 
+        nos.size() < ConfiguracaoNEAT::MAX_NOS) {
         adicionarNoAleatorio();
     }
     
-    // Mutação estrutural - nova conexão
-    if ((float)rand() / RAND_MAX < CHANCE_NOVA_CONEXAO) {
+    // Mutação estrutural - remover nó
+    if ((float)rand() / RAND_MAX < 0.05f && nos.size() > 16) { // 16 é o mínimo (entrada + saída)
+        removerNoAleatorio();
+    }
+    
+    // Mutação estrutural - adicionar conexão
+    if ((float)rand() / RAND_MAX < ConfiguracaoNEAT::CHANCE_NOVA_CONEXAO && 
+        conexoes.size() < ConfiguracaoNEAT::MAX_CONEXOES) {
         adicionarConexaoAleatoria();
     }
     
+    // Mutação estrutural - remover conexão
+    if ((float)rand() / RAND_MAX < 0.1f && conexoes.size() > 30) { // 30 é o mínimo de conexões
+        removerConexaoAleatoria();
+    }
+    
+    // Mutação estrutural - reativar conexão
+    if ((float)rand() / RAND_MAX < ConfiguracaoNEAT::CHANCE_CONEXAO_TOGGLE) {
+        reativarConexaoAleatoria();
+    }
+    
     // Log das mutações
+    int conexoesAtivas = std::count_if(conexoes.begin(), conexoes.end(), 
+        [](const Conexao& c) { return c.ativo; });
+    
     std::cout << "[NEAT] Mutações aplicadas na rede:"
               << "\n - Nós: " << nos.size()
-              << "\n - Conexões: " << conexoes.size() << std::endl;
+              << "\n - Conexões ativas: " << conexoesAtivas
+              << "\n - Conexões totais: " << conexoes.size() << std::endl;
 }
 
 void Rede::mutarPesos() {
@@ -243,6 +259,65 @@ void Rede::carregar(const std::string& arquivo) {
     in.read(reinterpret_cast<char*>(&numConexoes), sizeof(numConexoes));
     conexoes.resize(numConexoes);
     in.read(reinterpret_cast<char*>(conexoes.data()), numConexoes * sizeof(Conexao));
+}
+
+void Rede::removerNoAleatorio() {
+    // Não remover nós de entrada ou saída
+    std::vector<int> nosOcultos;
+    for (size_t i = 0; i < nos.size(); i++) {
+        if (nos[i].camada == 1) { // Camada oculta
+            nosOcultos.push_back(i);
+        }
+    }
+    
+    if (nosOcultos.empty()) return;
+    
+    // Escolher um nó oculto aleatório para remover
+    int idxRemover = nosOcultos[rand() % nosOcultos.size()];
+    int idNo = nos[idxRemover].id;
+    
+    // Remover conexões associadas
+    conexoes.erase(
+        std::remove_if(conexoes.begin(), conexoes.end(),
+            [idNo](const Conexao& c) {
+                return c.deNo == idNo || c.paraNo == idNo;
+            }),
+        conexoes.end()
+    );
+    
+    // Remover o nó
+    nos.erase(nos.begin() + idxRemover);
+    
+    std::cout << "[NEAT] Nó removido (ID: " << idNo << ")" << std::endl;
+}
+
+void Rede::removerConexaoAleatoria() {
+    if (conexoes.empty()) return;
+    
+    // Escolher uma conexão aleatória
+    int idx = rand() % conexoes.size();
+    conexoes.erase(conexoes.begin() + idx);
+    
+    std::cout << "[NEAT] Conexão removida" << std::endl;
+}
+
+void Rede::reativarConexaoAleatoria() {
+    // Encontrar conexões inativas
+    std::vector<int> conexoesInativas;
+    for (size_t i = 0; i < conexoes.size(); i++) {
+        if (!conexoes[i].ativo) {
+            conexoesInativas.push_back(i);
+        }
+    }
+    
+    if (conexoesInativas.empty()) return;
+    
+    // Reativar uma conexão aleatória
+    int idx = conexoesInativas[rand() % conexoesInativas.size()];
+    conexoes[idx].ativo = true;
+    
+    std::cout << "[NEAT] Conexão reativada: "
+              << conexoes[idx].deNo << " -> " << conexoes[idx].paraNo << std::endl;
 }
 
 } // namespace NEAT 

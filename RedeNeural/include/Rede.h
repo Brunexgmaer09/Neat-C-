@@ -1,6 +1,7 @@
 #pragma once
 #include <vector>
 #include <string>
+#include <algorithm> // Para std::count_if
 
 namespace NEAT {
 
@@ -45,6 +46,9 @@ public:
     void mutarPesos();
     void adicionarNoAleatorio();
     void adicionarConexaoAleatoria();
+    void removerNoAleatorio();
+    void removerConexaoAleatoria();
+    void reativarConexaoAleatoria();
     
     // Getters e Setters
     const std::vector<No>& obterNos() const { return nos; }
