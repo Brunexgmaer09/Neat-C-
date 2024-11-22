@@ -1,6 +1,7 @@
-#include "../include/Visualizador.h"
+#include "../HEADERS/Visualizador.h"
 #include <map>
 #include <algorithm>
+#include <iostream>
 
 namespace NEAT {
 
@@ -10,7 +11,7 @@ Visualizador::Visualizador(SDL_Renderer* renderer, const SDL_Rect& area,
 }
 
 void Visualizador::renderizar(const Rede& rede) {
-    // Desenhar fundo
+    // Desenhar fundo semi-transparente para melhor visualização
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
     SDL_SetRenderDrawColor(renderer, 
         config.corFundo.r, config.corFundo.g, 
@@ -20,23 +21,41 @@ void Visualizador::renderizar(const Rede& rede) {
     const auto& nos = rede.obterNos();
     const auto& conexoes = rede.obterConexoes();
     
-    // Calcular posições dos nós
-    std::map<int, SDL_Point> posicoes;
-    std::vector<std::vector<const No*>> camadasNos(3);
+    // Organizar nós por camada (entrada, oculta, saída)
+    // Isso permite que a visualização se adapte quando novos nós são adicionados
+    std::vector<std::vector<const No*>> camadasNos(3);  
     
-    // Organizar nós por camada
     for (const auto& no : nos) {
-        camadasNos[no.camada].push_back(&no);
+        if (no.camada >= 0 && no.camada < 3) {
+            camadasNos[no.camada].push_back(&no);
+        }
     }
+
+    // Log para debug da estrutura atual
+    std::cout << "\n[Visualizador] Estrutura atual da rede:"
+              << "\n - Nós de entrada: " << camadasNos[0].size()
+              << "\n - Nós ocultos: " << camadasNos[1].size()
+              << "\n - Nós de saída: " << camadasNos[2].size() << std::endl;
     
-    // Posicionar nós
+    // Calcular posições dos nós dinamicamente
+    std::map<int, SDL_Point> posicoes;
+    
+    // Posicionar cada camada
+    // A visualização se ajusta automaticamente ao número de nós em cada camada
     for (int camada = 0; camada < 3; camada++) {
-        float x = area.x + (camada * area.w / 2);
-        float espacoY = area.h / (camadasNos[camada].size() + 1);
+        // Calcular posição X da camada
+        float x = area.x + (camada * area.w / 2.0f);
+        if (camada == 1) {  // Centralizar nós ocultos
+            x = area.x + (area.w / 2.0f);
+        }
         
-        for (size_t i = 0; i < camadasNos[camada].size(); i++) {
+        const auto& nosNaCamada = camadasNos[camada];
+        // Distribuir nós verticalmente com espaçamento dinâmico
+        float espacoY = area.h / (nosNaCamada.size() + 1);
+        
+        for (size_t i = 0; i < nosNaCamada.size(); i++) {
             float y = area.y + ((i + 1) * espacoY);
-            posicoes[camadasNos[camada][i]->id] = {
+            posicoes[nosNaCamada[i]->id] = {
                 static_cast<int>(x),
                 static_cast<int>(y)
             };
@@ -44,18 +63,21 @@ void Visualizador::renderizar(const Rede& rede) {
     }
     
     // Desenhar conexões
+    // As conexões são coloridas com base no peso (vermelho = negativo, verde = positivo)
     for (const auto& conexao : conexoes) {
-        if (!conexao.ativo) continue;
+        if (!conexao.ativo) continue;  // Pular conexões desativadas
         
         auto itInicio = posicoes.find(conexao.deNo);
         auto itFim = posicoes.find(conexao.paraNo);
         
         if (itInicio != posicoes.end() && itFim != posicoes.end()) {
-            // Cor baseada no peso
-            Uint8 r = conexao.peso < 0 ? 255 : 0;
-            Uint8 g = conexao.peso > 0 ? 255 : 0;
+            // Cor baseada no peso da conexão
+            int intensidade = std::min(255, static_cast<int>(std::abs(conexao.peso) * 255));
+            Uint8 r = conexao.peso < 0 ? intensidade : 0;
+            Uint8 g = conexao.peso > 0 ? intensidade : 0;
             SDL_SetRenderDrawColor(renderer, r, g, 0, 255);
             
+            // Desenhar linha da conexão
             SDL_RenderDrawLine(renderer,
                 itInicio->second.x, itInicio->second.y,
                 itFim->second.x, itFim->second.y);
@@ -63,6 +85,7 @@ void Visualizador::renderizar(const Rede& rede) {
     }
     
     // Desenhar nós
+    // Cada tipo de nó tem uma cor diferente para fácil identificação
     for (const auto& [id, pos] : posicoes) {
         auto it = std::find_if(nos.begin(), nos.end(),
             [id](const No& n) { return n.id == id; });
@@ -70,13 +93,14 @@ void Visualizador::renderizar(const Rede& rede) {
         if (it != nos.end()) {
             SDL_Color cor;
             switch (it->camada) {
-                case 0: cor = config.corEntrada; break;
-                case 1: cor = config.corOculta; break;
-                case 2: cor = config.corSaida; break;
+                case 0: cor = config.corEntrada; break;  // Verde para entrada
+                case 1: cor = config.corOculta; break;   // Amarelo para ocultos
+                case 2: cor = config.corSaida; break;    // Vermelho para saída
             }
             
             SDL_SetRenderDrawColor(renderer, cor.r, cor.g, cor.b, cor.a);
             
+            // Desenhar nó como retângulo
             SDL_Rect noRect = {
                 pos.x - config.raioNo,
                 pos.y - config.raioNo,
@@ -85,12 +109,19 @@ void Visualizador::renderizar(const Rede& rede) {
             };
             SDL_RenderFillRect(renderer, &noRect);
             
+            // Desenhar borda do nó
             if (config.mostrarBordas) {
-                SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+                SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
                 SDL_RenderDrawRect(renderer, &noRect);
             }
         }
     }
+
+    // Log do número de conexões ativas
+    std::cout << "[Visualizador] Conexões ativas: " 
+              << std::count_if(conexoes.begin(), conexoes.end(), 
+                             [](const Conexao& c) { return c.ativo; })
+              << "/" << conexoes.size() << std::endl;
 }
 
 } // namespace NEAT 
