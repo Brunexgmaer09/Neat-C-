@@ -3,6 +3,7 @@
 #include "Especie.h"
 #include <vector>
 #include <functional>
+#include <iostream>
 
 // Forward declaration da classe Game
 class Game;

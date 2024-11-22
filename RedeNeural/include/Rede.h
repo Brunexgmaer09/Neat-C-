@@ -64,6 +64,15 @@ public:
     // Serialização
     void salvar(const std::string& arquivo);
     void carregar(const std::string& arquivo);
+
+    void verificarLimitesRede() {
+        if (nos.size() > ConfiguracaoNEAT::MAX_NOS) {
+            throw std::runtime_error("Limite máximo de nós excedido");
+        }
+        if (conexoes.size() > ConfiguracaoNEAT::MAX_CONEXOES) {
+            throw std::runtime_error("Limite máximo de conexões excedido");
+        }
+    }
 };
 
 } // namespace NEAT 
