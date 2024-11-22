@@ -175,14 +175,13 @@ void Populacao::avaliarPopulacao(std::function<float(Rede&)> funcaoAvaliacao) {
 }
 
 Rede* Populacao::selecaoTorneio(int tamanhoTorneio) {
-    // Implementar seleção por torneio mais agressiva
     std::vector<Rede*> candidatos;
     
-    // Selecionar candidatos aleatoriamente, mas com viés para os melhores
+    // Aumentar viés para melhores indivíduos
     for (int i = 0; i < tamanhoTorneio; i++) {
-        // 70% de chance de selecionar da metade superior
-        if ((float)rand() / RAND_MAX < 0.7f) {
-            int idx = rand() % (individuos.size() / 2);
+        if ((float)rand() / RAND_MAX < 0.8f) {  // Aumentado de 0.7f para 0.8f
+            // Selecionar do top 33% ao invés de 50%
+            int idx = rand() % (individuos.size() / 3);
             candidatos.push_back(&individuos[idx]);
         } else {
             int idx = rand() % individuos.size();
@@ -202,8 +201,8 @@ Rede* Populacao::selecaoTorneio(int tamanhoTorneio) {
         }
     }
     
-    // Se o melhor candidato tem fitness 0, tentar novamente
-    if (melhorFitness <= 0.0f && tamanhoTorneio < 5) {
+    // Se o melhor candidato tem fitness muito baixo, tentar novamente
+    if (melhorFitness < melhorAptidao * 0.1f && tamanhoTorneio < 5) {
         return selecaoTorneio(tamanhoTorneio + 1);
     }
     
