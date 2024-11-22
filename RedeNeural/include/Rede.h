@@ -28,22 +28,23 @@ private:
     std::vector<float> entradas;
     std::vector<float> saidas;
 
-    float sigmoid(float x);
-
 public:
+    static float sigmoid(float x);
+
     Rede(int numEntradas = 5, int numSaidas = 1);
     
     // Métodos principais
     void definirEntradas(const std::vector<float>& novasEntradas);
-    void avaliar();
+    void avaliar() const;
     void mutar();
     void limpar();
     
     // Métodos de modificação da rede
-    void adicionarNoAleatorio();
-    void adicionarConexaoAleatoria();
     void adicionarNo(int camada);
     void adicionarConexao(int deNo, int paraNo, float peso);
+    void mutarPesos();
+    void adicionarNoAleatorio();
+    void adicionarConexaoAleatoria();
     
     // Getters e Setters
     const std::vector<No>& obterNos() const { return nos; }

@@ -4,6 +4,9 @@
 #include <vector>
 #include <functional>
 
+// Forward declaration da classe Game
+class Game;
+
 namespace NEAT {
 
 class Populacao {
@@ -28,6 +31,17 @@ public:
             maxEspecies = 10;
             geracoesSemMelhoria = 15;
         }
+
+        explicit Configuracao(int tamPop) {
+            tamanhoPopulacao = tamPop;
+            taxaElitismo = 0.1f;
+            taxaMutacao = 0.3f;
+            taxaCruzamento = 0.8f;
+            limiarCompatibilidade = 3.0f;
+            tamanhoTorneio = 3;
+            maxEspecies = 10;
+            geracoesSemMelhoria = 15;
+        }
     };
 
 private:
@@ -36,8 +50,10 @@ private:
     std::vector<Especie> especies;
     int geracao;
     float melhorAptidao;
+    Game* jogo;  // Adicionado ponteiro para Game
     
     std::function<void(int, float, float, float)> onGeracaoCallback;
+    void analisarDiversidade(const std::vector<Rede>& populacao);
 
 public:
     Populacao(int numEntradas, int numSaidas, const Configuracao& config = Configuracao());
@@ -63,6 +79,7 @@ public:
     
     void salvarMelhorRede(const std::string& arquivo);
     void carregarMelhorRede(const std::string& arquivo);
+    void definirGame(Game* game) { jogo = game; }  // Implementação inline
 
 protected:
     Rede* selecaoTorneio(int tamanhoTorneio);

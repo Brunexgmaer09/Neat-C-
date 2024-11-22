@@ -1,12 +1,19 @@
-#include "../include/Populacao.h"
+#include "../Headers/Populacao.h"
 #include <algorithm>
 #include <iostream>
 #include <random>
+#include <iomanip> // Para formatação dos logs
+#include <map>
 
 namespace NEAT {
 
 Populacao::Populacao(int numEntradas, int numSaidas, const Configuracao& config)
     : config(config), geracao(0), melhorAptidao(0) {
+    
+    std::cout << "\n[NEAT] Inicializando população com:" 
+              << "\n - Tamanho: " << config.tamanhoPopulacao
+              << "\n - Entradas: " << numEntradas
+              << "\n - Saídas: " << numSaidas << std::endl;
     
     // Criar população inicial
     for (int i = 0; i < config.tamanhoPopulacao; i++) {
@@ -15,6 +22,8 @@ Populacao::Populacao(int numEntradas, int numSaidas, const Configuracao& config)
 }
 
 void Populacao::evoluir() {
+    std::cout << "\n[NEAT] Iniciando evolução da geração " << geracao << std::endl;
+    
     // Ordenar por aptidão
     std::sort(individuos.begin(), individuos.end(),
         [](const Rede& a, const Rede& b) {
@@ -36,38 +45,126 @@ void Populacao::evoluir() {
     float aptidaoMedia = aptidaoTotal / individuos.size();
     melhorAptidao = aptidaoMaxima;
     
-    // Notificar callback se existir
-    if (onGeracaoCallback) {
-        onGeracaoCallback(geracao, aptidaoMaxima, aptidaoMedia, aptidaoMinima);
-    }
+    // Log das estatísticas
+    std::cout << std::fixed << std::setprecision(2)
+              << "\n[NEAT] Estatísticas da geração " << geracao
+              << "\n - Melhor Fitness: " << aptidaoMaxima
+              << "\n - Fitness Médio: " << aptidaoMedia
+              << "\n - Pior Fitness: " << aptidaoMinima << std::endl;
     
     // Nova geração
     std::vector<Rede> novaGeracao;
     
     // Elitismo
     int numElite = static_cast<int>(config.tamanhoPopulacao * config.taxaElitismo);
+    std::cout << "\n[NEAT] Aplicando elitismo - Preservando " << numElite << " indivíduos" << std::endl;
+    
     for (int i = 0; i < numElite; i++) {
         novaGeracao.push_back(individuos[i]);
+        std::cout << " - Elite #" << i + 1 << " Fitness: " << individuos[i].obterAptidao() << std::endl;
     }
+    
+    // Contadores para logs
+    int numCruzamentos = 0;
+    int numMutacoes = 0;
+    int numCopias = 0;
     
     // Criar resto da população
     while (novaGeracao.size() < config.tamanhoPopulacao) {
         if ((float)rand() / RAND_MAX < config.taxaCruzamento) {
             Rede* pai1 = selecaoTorneio(config.tamanhoTorneio);
             Rede* pai2 = selecaoTorneio(config.tamanhoTorneio);
+            
+            std::cout << "\n[NEAT] Realizando cruzamento:"
+                      << "\n - Pai 1 Fitness: " << pai1->obterAptidao()
+                      << "\n - Pai 2 Fitness: " << pai2->obterAptidao();
+            
             Rede filho = cruzarRedes(*pai1, *pai2);
+            
             if ((float)rand() / RAND_MAX < config.taxaMutacao) {
+                std::cout << "\n[NEAT] Aplicando mutação no filho";
                 filho.mutar();
+                numMutacoes++;
             }
+            
             novaGeracao.push_back(filho);
+            numCruzamentos++;
+            
         } else {
             int idx = rand() % individuos.size();
             novaGeracao.push_back(individuos[idx]);
+            numCopias++;
         }
     }
     
+    // Log final da geração
+    std::cout << "\n[NEAT] Resumo da geração " << geracao
+              << "\n - Cruzamentos realizados: " << numCruzamentos
+              << "\n - Mutações aplicadas: " << numMutacoes
+              << "\n - Cópias diretas: " << numCopias
+              << "\n - Tamanho da população: " << novaGeracao.size() << std::endl;
+    
+    // Análise de diversidade
+    analisarDiversidade(novaGeracao);
+    
     individuos = std::move(novaGeracao);
     geracao++;
+}
+
+void Populacao::analisarDiversidade(const std::vector<Rede>& populacao) {
+    // Contagem de estruturas únicas
+    std::map<size_t, int> estruturas;
+    
+    for (const auto& individuo : populacao) {
+        size_t numConexoes = individuo.obterConexoes().size();
+        size_t numNos = individuo.obterNos().size();
+        size_t hash = numConexoes * 1000 + numNos; // Hash simples da estrutura
+        estruturas[hash]++;
+    }
+    
+    std::cout << "\n[NEAT] Análise de diversidade:"
+              << "\n - Estruturas únicas: " << estruturas.size()
+              << "\n - Distribuição:";
+              
+    for (const auto& [estrutura, quantidade] : estruturas) {
+        size_t numNos = estrutura % 1000;
+        size_t numConexoes = estrutura / 1000;
+        std::cout << "\n   * " << quantidade << " indivíduos com "
+                  << numNos << " nós e " << numConexoes << " conexões";
+    }
+    std::cout << std::endl;
+}
+
+void Populacao::especiar() {
+    std::cout << "\n[NEAT] Iniciando especiação" << std::endl;
+    
+    especies.clear();
+    int individuosSemEspecie = 0;
+    
+    for (auto& individuo : individuos) {
+        bool encontrouEspecie = false;
+        
+        for (auto& especie : especies) {
+            if (especie.verificarCompatibilidade(individuo)) {
+                especie.adicionarMembro(&individuo);
+                encontrouEspecie = true;
+                break;
+            }
+        }
+        
+        if (!encontrouEspecie) {
+            if (especies.size() < config.maxEspecies) {
+                especies.emplace_back(individuo);
+                std::cout << "[NEAT] Nova espécie criada - Total: " << especies.size() << std::endl;
+            } else {
+                individuosSemEspecie++;
+            }
+        }
+    }
+    
+    std::cout << "[NEAT] Especiação concluída:"
+              << "\n - Total de espécies: " << especies.size()
+              << "\n - Indivíduos sem espécie: " << individuosSemEspecie << std::endl;
 }
 
 void Populacao::avaliarPopulacao(std::function<float(Rede&)> funcaoAvaliacao) {
@@ -78,19 +175,39 @@ void Populacao::avaliarPopulacao(std::function<float(Rede&)> funcaoAvaliacao) {
 }
 
 Rede* Populacao::selecaoTorneio(int tamanhoTorneio) {
-    float melhorAptidao = -1.0f;
-    Rede* melhorRede = nullptr;
+    // Implementar seleção por torneio mais agressiva
+    std::vector<Rede*> candidatos;
     
+    // Selecionar candidatos aleatoriamente, mas com viés para os melhores
     for (int i = 0; i < tamanhoTorneio; i++) {
-        int idx = rand() % individuos.size();
-        float aptidao = individuos[idx].obterAptidao();
-        if (aptidao > melhorAptidao) {
-            melhorAptidao = aptidao;
-            melhorRede = &individuos[idx];
+        // 70% de chance de selecionar da metade superior
+        if ((float)rand() / RAND_MAX < 0.7f) {
+            int idx = rand() % (individuos.size() / 2);
+            candidatos.push_back(&individuos[idx]);
+        } else {
+            int idx = rand() % individuos.size();
+            candidatos.push_back(&individuos[idx]);
         }
     }
     
-    return melhorRede;
+    // Encontrar o melhor candidato
+    Rede* melhor = candidatos[0];
+    float melhorFitness = melhor->obterAptidao();
+    
+    for (size_t i = 1; i < candidatos.size(); i++) {
+        float fitness = candidatos[i]->obterAptidao();
+        if (fitness > melhorFitness) {
+            melhorFitness = fitness;
+            melhor = candidatos[i];
+        }
+    }
+    
+    // Se o melhor candidato tem fitness 0, tentar novamente
+    if (melhorFitness <= 0.0f && tamanhoTorneio < 5) {
+        return selecaoTorneio(tamanhoTorneio + 1);
+    }
+    
+    return melhor;
 }
 
 Rede Populacao::cruzarRedes(const Rede& rede1, const Rede& rede2) {
@@ -118,11 +235,24 @@ Rede Populacao::cruzarRedes(const Rede& rede1, const Rede& rede2) {
 }
 
 void Populacao::selecao() {
-    // Ordenar indivíduos por aptidão
+    // Ordenar por fitness
     std::sort(individuos.begin(), individuos.end(),
         [](const Rede& a, const Rede& b) {
             return a.obterAptidao() > b.obterAptidao();
         });
+
+    // Calcular soma total de fitness
+    float somaFitness = 0.0f;
+    for (const auto& individuo : individuos) {
+        somaFitness += std::max(0.1f, individuo.obterAptidao()); // Evita fitness 0
+    }
+
+    // Calcular probabilidades de seleção
+    std::vector<float> probabilidades;
+    for (const auto& individuo : individuos) {
+        float prob = std::max(0.1f, individuo.obterAptidao()) / somaFitness;
+        probabilidades.push_back(prob);
+    }
 }
 
 void Populacao::cruzamento() {
@@ -152,28 +282,25 @@ void Populacao::cruzamento() {
 
 void Populacao::mutacao() {
     for (auto& individuo : individuos) {
-        if ((float)rand() / RAND_MAX < config.taxaMutacao) {
-            individuo.mutar();
+        // Aumentar chance de mutação para indivíduos ruins
+        float chanceMutacao = config.taxaMutacao;
+        if (individuo.obterAptidao() < melhorAptidao * 0.5f) {
+            chanceMutacao *= 2.0f;
         }
-    }
-}
-
-void Populacao::especiar() {
-    especies.clear();
-    
-    for (auto& individuo : individuos) {
-        bool encontrouEspecie = false;
         
-        for (auto& especie : especies) {
-            if (especie.verificarCompatibilidade(individuo)) {
-                especie.adicionarMembro(&individuo);
-                encontrouEspecie = true;
-                break;
+        if ((float)rand() / RAND_MAX < chanceMutacao) {
+            // Adicionar diferentes tipos de mutação
+            switch(rand() % 3) {
+                case 0:
+                    individuo.mutarPesos();
+                    break;
+                case 1:
+                    individuo.adicionarNoAleatorio();
+                    break;
+                case 2:
+                    individuo.adicionarConexaoAleatoria();
+                    break;
             }
-        }
-        
-        if (!encontrouEspecie && especies.size() < config.maxEspecies) {
-            especies.emplace_back(individuo);
         }
     }
 }

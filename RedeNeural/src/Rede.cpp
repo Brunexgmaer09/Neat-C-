@@ -1,4 +1,5 @@
-#include "../include/Rede.h"
+#include "../Headers/Rede.h"
+#include "../Headers/Configuracao.h"
 #include <cmath>
 #include <fstream>
 #include <iostream>
@@ -41,12 +42,125 @@ void Rede::adicionarConexao(int deNo, int paraNo, float peso) {
 }
 
 void Rede::mutar() {
-    // Implementação básica de mutação
+    // Aumentar drasticamente as chances de mutação para promover diversidade
+    const float CHANCE_MUTAR_PESO = 0.8f;      // 80% chance de mutar pesos
+    const float CHANCE_NOVO_NO = 0.1f;         // 10% chance de adicionar nó
+    const float CHANCE_NOVA_CONEXAO = 0.15f;   // 15% chance de adicionar conexão
+    
+    // Mutação de pesos
+    if ((float)rand() / RAND_MAX < CHANCE_MUTAR_PESO) {
+        mutarPesos();
+    }
+    
+    // Mutação estrutural - novo nó
+    if ((float)rand() / RAND_MAX < CHANCE_NOVO_NO) {
+        adicionarNoAleatorio();
+    }
+    
+    // Mutação estrutural - nova conexão
+    if ((float)rand() / RAND_MAX < CHANCE_NOVA_CONEXAO) {
+        adicionarConexaoAleatoria();
+    }
+    
+    // Log das mutações
+    std::cout << "[NEAT] Mutações aplicadas na rede:"
+              << "\n - Nós: " << nos.size()
+              << "\n - Conexões: " << conexoes.size() << std::endl;
+}
+
+void Rede::mutarPesos() {
+    const float CHANCE_PERTURBAR = 0.9f;  // 90% chance de perturbar, 10% de substituir
+    const float FORCA_PERTURBACAO = 0.5f;  // Força máxima da perturbação
+    
     for (auto& conexao : conexoes) {
-        if (rand() % 100 < 10) { // 10% de chance de mutar cada conexão
-            conexao.peso += (float)(rand() % 200 - 100) / 100.0f;
+        if ((float)rand() / RAND_MAX < CHANCE_PERTURBAR) {
+            // Perturbar peso existente
+            float perturbacao = ((float)rand() / RAND_MAX * 2.0f - 1.0f) * FORCA_PERTURBACAO;
+            conexao.peso += perturbacao;
+            
+            // Limitar peso entre -4 e 4
+            conexao.peso = std::max(-4.0f, std::min(4.0f, conexao.peso));
+        } else {
+            // Substituir peso completamente
+            conexao.peso = (float)rand() / RAND_MAX * 8.0f - 4.0f;
         }
     }
+    
+    std::cout << "[NEAT] Mutação de pesos aplicada em " << conexoes.size() << " conexões" << std::endl;
+}
+
+void Rede::adicionarNoAleatorio() {
+    if (conexoes.empty() || nos.size() >= ConfiguracaoNEAT::MAX_NOS) return;
+    
+    // Escolher uma conexão aleatória para dividir
+    int idxConexao = rand() % conexoes.size();
+    auto& conexao = conexoes[idxConexao];
+    
+    // Desativar a conexão original
+    conexao.ativo = false;
+    
+    // Criar novo nó na camada oculta (1)
+    No novoNo;
+    novoNo.id = proximoIdNo++;
+    novoNo.camada = 1;
+    novoNo.valor = 0.0f;
+    nos.push_back(novoNo);
+    
+    // Criar duas novas conexões
+    // 1. Do nó de entrada para o novo nó
+    adicionarConexao(conexao.deNo, novoNo.id, 1.0f);
+    
+    // 2. Do novo nó para o nó de saída
+    adicionarConexao(novoNo.id, conexao.paraNo, conexao.peso);
+    
+    std::cout << "[NEAT] Novo nó adicionado (ID: " << novoNo.id 
+              << ") dividindo conexão " << conexao.deNo 
+              << " -> " << conexao.paraNo << std::endl;
+}
+
+void Rede::adicionarConexaoAleatoria() {
+    if (nos.size() < 2 || conexoes.size() >= ConfiguracaoNEAT::MAX_CONEXOES) return;
+    
+    // Tentar várias vezes encontrar uma conexão válida
+    for (int tentativas = 0; tentativas < 20; tentativas++) {
+        // Escolher dois nós aleatórios
+        int idxNo1 = rand() % nos.size();
+        int idxNo2 = rand() % nos.size();
+        
+        No& no1 = nos[idxNo1];
+        No& no2 = nos[idxNo2];
+        
+        // Verificar se a conexão seria válida:
+        // 1. Não conectar nó com ele mesmo
+        // 2. Não conectar nós da mesma camada
+        // 3. Respeitar a direção do fluxo (camada menor para maior)
+        if (idxNo1 != idxNo2 && 
+            no1.camada != no2.camada && 
+            no1.camada < no2.camada) {
+            
+            // Verificar se a conexão já existe
+            bool conexaoExiste = false;
+            for (const auto& conexao : conexoes) {
+                if (conexao.deNo == no1.id && conexao.paraNo == no2.id) {
+                    conexaoExiste = true;
+                    break;
+                }
+            }
+            
+            if (!conexaoExiste) {
+                // Criar nova conexão com peso aleatório
+                float peso = (float)rand() / RAND_MAX * 8.0f - 4.0f;
+                adicionarConexao(no1.id, no2.id, peso);
+                
+                std::cout << "[NEAT] Nova conexão adicionada: " 
+                          << no1.id << " -> " << no2.id 
+                          << " (peso: " << peso << ")" << std::endl;
+                return;
+            }
+        }
+    }
+    
+    std::cout << "[NEAT] Não foi possível adicionar nova conexão após 20 tentativas" << std::endl;
 }
 
 Rede::Rede(int numEntradas, int numSaidas) : aptidao(0), proximoIdNo(0) {
@@ -69,26 +183,34 @@ Rede::Rede(int numEntradas, int numSaidas) : aptidao(0), proximoIdNo(0) {
     }
 }
 
-void Rede::avaliar() {
-    limpar();
+void Rede::avaliar() const {
+    // Como o método é const, precisamos usar mutable nos membros que serão modificados
+    // ou fazer um cast para remover o const
+    auto& naoConstNos = const_cast<std::vector<No>&>(nos);
+    auto& naoConstSaidas = const_cast<std::vector<float>&>(saidas);
+    
+    // Limpar valores
+    for (auto& no : naoConstNos) {
+        no.valor = 0.0f;
+    }
+    naoConstSaidas.clear();
     
     // Definir valores dos nós de entrada
     for (size_t i = 0; i < entradas.size(); i++) {
-        nos[i].valor = entradas[i];
+        naoConstNos[i].valor = entradas[i];
     }
     
     // Propagar valores pela rede
     for (const auto& conexao : conexoes) {
         if (conexao.ativo) {
-            nos[conexao.paraNo].valor += nos[conexao.deNo].valor * conexao.peso;
+            naoConstNos[conexao.paraNo].valor += nos[conexao.deNo].valor * conexao.peso;
         }
     }
     
     // Coletar saídas e aplicar função de ativação
-    saidas.clear();
     for (const auto& no : nos) {
         if (no.camada == 2) {
-            saidas.push_back(sigmoid(no.valor));
+            naoConstSaidas.push_back(sigmoid(no.valor));
         }
     }
 }
