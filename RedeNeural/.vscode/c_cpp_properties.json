@@ -6,11 +6,16 @@
                 "${workspaceFolder}/**",
                 "${workspaceFolder}/include"
             ],
-            "defines": [],
+            "defines": [
+                "_DEBUG",
+                "UNICODE",
+                "_UNICODE"
+            ],
+            "windowsSdkVersion": "10.0.19041.0",
             "compilerPath": "C:/MinGW/bin/g++.exe",
-            "cStandard": "c11",
+            "cStandard": "c17",
             "cppStandard": "c++17",
-            "intelliSenseMode": "gcc-x64"
+            "intelliSenseMode": "windows-gcc-x64"
         }
     ],
     "version": 4

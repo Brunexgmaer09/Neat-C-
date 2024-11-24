@@ -1,4 +1,4 @@
-#include "../include/Especie.h"
+#include "../HEADERS/Especie.hpp"
 #include <cmath>
 
 namespace NEAT {

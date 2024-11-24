@@ -1,7 +1,11 @@
 #include "../include/Populacao.hpp"
+#include "../include/Rede.hpp"
 #include "../include/Validador.hpp"
 #include "../include/Logger.hpp"
 #include "../include/Especie.hpp"
+#include "../include/ErrosNEAT.hpp"
+#include "../include/Configuracao.hpp"
+
 #include <algorithm>
 #include <iostream>
 #include <random>
@@ -212,76 +216,79 @@ Rede* Populacao::selecaoTorneio(int tamanhoTorneio) {
 }
 
 Rede Populacao::cruzarRedes(const Rede& rede1, const Rede& rede2) {
-    // Validar redes antes do cruzamento
-    if (!Validador::validarRede(rede1) || !Validador::validarRede(rede2)) {
-        Logger::log(Logger::Nivel::ERROR, "Tentativa de cruzar redes inválidas");
-        throw std::runtime_error("Redes inválidas para cruzamento");
-    }
-
-    // Criar filho
-    Rede filho(0, 0);
-    
     try {
-        // Copiar nós
+        // Validações iniciais
+        if (rede1.obterNos().empty() || rede2.obterNos().empty()) {
+            throw std::runtime_error("Tentativa de cruzar rede vazia");
+        }
+
+        // Criar backup antes do cruzamento
+        Rede filho(0, 0);
+        
+        // Mapear IDs dos nós para garantir consistência
+        std::map<int, int> mapaIds;
+        int novoId = 0;
+        
+        // Copiar nós com novo mapeamento de IDs
         std::vector<No> nosFilho;
-        auto nosRede1 = rede1.obterNos();
-        auto nosRede2 = rede2.obterNos();
+        for (const auto& no : rede1.obterNos()) {
+            No novoNo = no;
+            mapaIds[no.id] = novoId;
+            novoNo.id = novoId++;
+            nosFilho.push_back(novoNo);
+        }
         
-        // Garantir que todos os nós necessários sejam copiados
-        std::set<int> idsNos;
-        for (const auto& no : nosRede1) idsNos.insert(no.id);
-        for (const auto& no : nosRede2) idsNos.insert(no.id);
-        
-        for (int id : idsNos) {
-            auto noRede1 = std::find_if(nosRede1.begin(), nosRede1.end(),
-                [id](const No& no) { return no.id == id; });
-                
-            auto noRede2 = std::find_if(nosRede2.begin(), nosRede2.end(),
-                [id](const No& no) { return no.id == id; });
-                
-            if (noRede1 != nosRede1.end()) {
-                nosFilho.push_back(*noRede1);
-            } else if (noRede2 != nosRede2.end()) {
-                nosFilho.push_back(*noRede2);
+        // Adicionar nós únicos da rede2
+        for (const auto& no : rede2.obterNos()) {
+            if (mapaIds.find(no.id) == mapaIds.end()) {
+                No novoNo = no;
+                mapaIds[no.id] = novoId;
+                novoNo.id = novoId++;
+                nosFilho.push_back(novoNo);
             }
         }
         
-        filho.definirNos(nosFilho);
-        
-        // Cruzar conexões com verificação de compatibilidade
+        // Copiar conexões com IDs mapeados
         std::vector<Conexao> conexoesFilho;
-        auto conexoesRede1 = rede1.obterConexoes();
-        auto conexoesRede2 = rede2.obterConexoes();
         
-        for (const auto& conexao : conexoesRede1) {
-            if (conexao.ativo && rand() % 2 == 0) {
-                // Verificar se os nós existem no filho
-                if (std::find_if(nosFilho.begin(), nosFilho.end(),
-                    [&](const No& no) { return no.id == conexao.deNo; }) != nosFilho.end() &&
-                    std::find_if(nosFilho.begin(), nosFilho.end(),
-                    [&](const No& no) { return no.id == conexao.paraNo; }) != nosFilho.end()) {
-                    conexoesFilho.push_back(conexao);
-                }
+        // Função helper para adicionar conexão com verificação
+        auto adicionarConexaoSegura = [&](const Conexao& conexao) {
+            if (mapaIds.find(conexao.deNo) != mapaIds.end() && 
+                mapaIds.find(conexao.paraNo) != mapaIds.end()) {
+                
+                Conexao novaConexao = conexao;
+                novaConexao.deNo = mapaIds[conexao.deNo];
+                novaConexao.paraNo = mapaIds[conexao.paraNo];
+                conexoesFilho.push_back(novaConexao);
+            }
+        };
+        
+        // Adicionar conexões da rede1 (50% de chance)
+        for (const auto& conexao : rede1.obterConexoes()) {
+            if (rand() % 2 == 0) {
+                adicionarConexaoSegura(conexao);
             }
         }
         
-        for (const auto& conexao : conexoesRede2) {
-            if (conexao.ativo && rand() % 2 == 0) {
-                // Verificar se os nós existem no filho
-                if (std::find_if(nosFilho.begin(), nosFilho.end(),
-                    [&](const No& no) { return no.id == conexao.deNo; }) != nosFilho.end() &&
-                    std::find_if(nosFilho.begin(), nosFilho.end(),
-                    [&](const No& no) { return no.id == conexao.paraNo; }) != nosFilho.end()) {
-                    conexoesFilho.push_back(conexao);
-                }
+        // Adicionar conexões da rede2 (50% de chance)
+        for (const auto& conexao : rede2.obterConexoes()) {
+            if (rand() % 2 == 0) {
+                adicionarConexaoSegura(conexao);
             }
         }
         
+        // Garantir que há pelo menos uma conexão
+        if (conexoesFilho.empty() && !rede1.obterConexoes().empty()) {
+            adicionarConexaoSegura(rede1.obterConexoes()[0]);
+        }
+        
+        // Configurar o filho
+        filho.definirNos(nosFilho);
         filho.definirConexoes(conexoesFilho);
         
-        // Validar filho antes de retornar
+        // Validação final
         if (!Validador::validarRede(filho)) {
-            throw std::runtime_error("Filho gerado é inválido");
+            throw std::runtime_error("Rede filho gerada é inválida");
         }
         
         return filho;
@@ -289,7 +296,8 @@ Rede Populacao::cruzarRedes(const Rede& rede1, const Rede& rede2) {
     catch (const std::exception& e) {
         Logger::log(Logger::Nivel::ERROR, 
             "Erro durante cruzamento: " + std::string(e.what()));
-        throw;
+        // Retornar cópia da rede1 em caso de erro
+        return rede1;
     }
 }
 

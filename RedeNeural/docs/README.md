@@ -12,8 +12,7 @@ Uma implementação robusta e eficiente do algoritmo NEAT em C++, com foco em se
 - [Características](#-características)
 - [Instalação](#-instalação)
 - [Como Usar](#-como-usar)
-- [Exemplos](#-exemplos)
-- [Documentação](#-documentação)
+- [Estrutura](#-estrutura)
 - [Contribuindo](#-contribuindo)
 - [Licença](#-licença)
 
@@ -24,17 +23,18 @@ O NEAT é um algoritmo genético que cria e evolui redes neurais artificiais. Es
 ### Principais Diferenciais:
 - **Sistema de Cache**: Otimização de performance com cache de avaliações
 - **Validação Robusta**: Sistema completo de validação de redes e conexões
+- **Tratamento de Erros**: Sistema especializado de exceções para NEAT
 - **Logging Detalhado**: Sistema de logs para debug e monitoramento
 - **Métricas e Análises**: Coleta e análise de dados de evolução
 - **Visualização em Tempo Real**: Interface gráfica com SDL2
 - **Persistência Flexível**: Salvamento/carregamento em múltiplos formatos
 
-## ✨ Características
+## 🔧 Instalação
 
-### Novas Funcionalidades:
-- **Sistema de Cache**
-  - Cache de avaliações para melhor performance
-  - Invalidação automática quando necessário
+### Pré-requisitos
+- C++17 ou superior
+- SDL2 (para visualização)
+- CMake 3.10 ou superior
 
 - **Validação e Segurança**
   - Verificação de limites e restrições
@@ -74,56 +74,96 @@ struct ConfiguracaoNEAT {
 
 ## 💻 Como Usar
 
-### Exemplo Básico:
 ```cpp
-#include "RedeNeural/include/Rede.hpp"
-#include "RedeNeural/include/Populacao.hpp"
-#include "RedeNeural/include/Logger.hpp"
+#include "HEADERS/Rede.hpp"
+#include "HEADERS/Populacao.hpp"
+#include "HEADERS/Logger.hpp"
 
 int main() {
-    // Inicializar logger
-    NEAT::Logger::inicializar("neat.log");
-    
-    // Configurar população
-    NEAT::Populacao::Configuracao config;
-    config.tamanhoPopulacao = 150;
-    config.taxaMutacao = 0.3f;
-    
-    // Criar e evoluir população
-    NEAT::Populacao populacao(2, 1, config);  // 2 entradas, 1 saída
-    
-    for (int geracao = 0; geracao < 100; geracao++) {
-        populacao.avaliarPopulacao([](NEAT::Rede& rede) {
-            // Sua função de avaliação aqui
-            return 0.0f;
-        });
-        populacao.evoluir();
+    try {
+        // Inicializar logger
+        NEAT::Logger::inicializar("neat.log");
+        
+        // Configurar população
+        NEAT::Populacao::Configuracao config;
+        config.tamanhoPopulacao = 150;
+        config.taxaMutacao = 0.3f;
+        
+        // Criar e evoluir população
+        NEAT::Populacao populacao(2, 1, config);
+        
+        for (int geracao = 0; geracao < 100; geracao++) {
+            populacao.avaliarPopulacao([](NEAT::Rede& rede) {
+                // Sua função de avaliação aqui
+                return 0.0f;
+            });
+            populacao.evoluir();
+        }
+        
+        populacao.salvarMelhorRede("melhor_rede.neat");
+        NEAT::Logger::finalizar();
     }
-    
-    // Salvar melhor rede
-    populacao.salvarMelhorRede("melhor_rede.neat");
-    
-    NEAT::Logger::finalizar();
+    catch (const NEAT::ErroNEAT& e) {
+        std::cerr << "Erro NEAT: " << e.what() << std::endl;
+    }
     return 0;
 }
 ```
 
-## 📚 Documentação
+## 📁 Estrutura
 
-### Estrutura do Projeto
 ```
 RedeNeural/
-├── include/
-│   ├── Rede.hpp           # Classe principal da rede neural
-│   ├── Populacao.hpp      # Gerenciamento da população
-│   ├── Validador.hpp      # Sistema de validação
+├── HEADERS/                # Headers (.hpp)
+│   ├── Configuracao.hpp   # Configurações globais
+│   ├── ErrosNEAT.hpp      # Sistema de exceções
+│   ├── Especie.hpp        # Gerenciamento de espécies
+│   ├── GerenciadorInovacao.hpp
 │   ├── Logger.hpp         # Sistema de logging
 │   ├── Metricas.hpp       # Coleta de métricas
-│   └── Configuracao.hpp   # Configurações globais
-├── src/
-│   └── ...               # Implementações
-└── docs/
-    └── README.md         # Esta documentação
+│   ├── Persistencia.hpp   # Salvamento/carregamento
+│   ├── Populacao.hpp      # Gerenciamento populacional
+│   ├── Rede.hpp          # Classe principal da rede
+│   ├── Validador.hpp     # Sistema de validação
+│   └── Visualizador.hpp  # Visualização SDL2
+│
+├── HPP/                   # Implementações (.cpp)
+│   ├── Configuracao.cpp
+│   ├── Especie.cpp
+│   ├── Populacao.cpp
+│   ├── Rede.cpp
+│   └── Visualizador.cpp
+│
+├── docs/                  # Documentação
+│   └── README.md
+│
+└── CMakeLists.txt        # Configuração do CMake
+```
+
+## ⚙️ Configurações
+
+### Parâmetros da Rede
+```cpp
+struct ConfiguracaoNEAT {
+    // Parâmetros de compatibilidade
+    static float COEF_EXCESSO;      // Genes em excesso
+    static float COEF_DISJUNTO;     // Genes disjuntos
+    static float COEF_PESO;         // Diferença de pesos
+    
+    // Parâmetros de mutação
+    static float CHANCE_PESO_PERTURBADO;
+    static float CHANCE_CONEXAO_TOGGLE;
+    static float CHANCE_NOVO_NO;
+    static float CHANCE_NOVA_CONEXAO;
+    
+    // Limites de segurança
+    struct Limites {
+        static constexpr float MIN_PESO = -4.0f;
+        static constexpr float MAX_PESO = 4.0f;
+        static constexpr int MAX_CAMADAS = 10;
+        static constexpr int MAX_NOS_POR_CAMADA = 50;
+    };
+};
 ```
 
 ## 🤝 Contribuindo

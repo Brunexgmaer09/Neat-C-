@@ -1,4 +1,4 @@
-#include "../HEADERS/Visualizador.h"
+#include "../HEADERS/Visualizador.hpp"
 #include <map>
 #include <algorithm>
 #include <iostream>
