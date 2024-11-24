@@ -1,7 +1,9 @@
 #pragma once
 #include <vector>
 #include <string>
-#include <algorithm> // Para std::count_if
+#include <stdexcept>
+#include <algorithm>
+#include "Configuracao.hpp"
 
 namespace NEAT {
 
@@ -28,6 +30,8 @@ private:
     std::vector<Conexao> conexoes;
     std::vector<float> entradas;
     std::vector<float> saidas;
+    mutable bool cacheValido;
+    mutable std::vector<float> cacheSaidas;
 
 public:
     static float sigmoid(float x);
@@ -61,10 +65,6 @@ public:
     static int obterProximaInovacao() { return proximaInovacao; }
     int obterProximoIdNo() const { return proximoIdNo; }
     
-    // Serialização
-    void salvar(const std::string& arquivo);
-    void carregar(const std::string& arquivo);
-
     void verificarLimitesRede() {
         if (nos.size() > ConfiguracaoNEAT::MAX_NOS) {
             throw std::runtime_error("Limite máximo de nós excedido");
@@ -73,6 +73,11 @@ public:
             throw std::runtime_error("Limite máximo de conexões excedido");
         }
     }
+    
+    // Serialização
+    void salvar(const std::string& arquivo);
+    void carregar(const std::string& arquivo);
+    void invalidarCache() { cacheValido = false; }
 };
 
 } // namespace NEAT 

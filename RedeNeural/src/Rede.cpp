@@ -1,5 +1,5 @@
-#include "../Headers/Rede.h"
-#include "../Headers/Configuracao.h"
+#include "../include/Rede.hpp"
+#include "../include/Configuracao.hpp"
 #include <cmath>
 #include <fstream>
 #include <iostream>

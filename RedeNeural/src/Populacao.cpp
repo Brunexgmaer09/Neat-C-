@@ -1,9 +1,13 @@
-#include "../Headers/Populacao.h"
+#include "../include/Populacao.hpp"
+#include "../include/Validador.hpp"
+#include "../include/Logger.hpp"
+#include "../include/Especie.hpp"
 #include <algorithm>
 #include <iostream>
 #include <random>
-#include <iomanip> // Para formatação dos logs
+#include <iomanip>
 #include <map>
+#include <set>
 
 namespace NEAT {
 
@@ -75,40 +79,38 @@ void Populacao::evoluir() {
             Rede* pai1 = selecaoTorneio(config.tamanhoTorneio);
             Rede* pai2 = selecaoTorneio(config.tamanhoTorneio);
             
-            std::cout << "\n[NEAT] Realizando cruzamento:"
-                      << "\n - Pai 1 Fitness: " << pai1->obterAptidao()
-                      << "\n - Pai 2 Fitness: " << pai2->obterAptidao();
+            // Realizar cruzamento
+            cruzamento();
             
-            Rede filho = cruzarRedes(*pai1, *pai2);
+            // Realizar mutação
+            mutacao();
             
-            if ((float)rand() / RAND_MAX < config.taxaMutacao) {
-                std::cout << "\n[NEAT] Aplicando mutação no filho";
-                filho.mutar();
-                numMutacoes++;
+            // Validar nova população
+            for (const auto& individuo : individuos) {
+                if (!Validador::validarRede(individuo)) {
+                    throw std::runtime_error("Nova população inválida");
+                }
             }
             
-            novaGeracao.push_back(filho);
-            numCruzamentos++;
+            // Atualizar geração
+            geracao++;
             
-        } else {
-            int idx = rand() % individuos.size();
-            novaGeracao.push_back(individuos[idx]);
-            numCopias++;
+            Logger::log(Logger::Nivel::INFO, 
+                "Evolução concluída com sucesso - Geração " + std::to_string(geracao));
+        }
+        catch (const std::exception& e) {
+            // Restaurar backup em caso de erro
+            Logger::log(Logger::Nivel::ERROR, 
+                "Erro durante evolução: " + std::string(e.what()));
+            individuos = backupPopulacao;
+            throw;
         }
     }
-    
-    // Log final da geração
-    std::cout << "\n[NEAT] Resumo da geração " << geracao
-              << "\n - Cruzamentos realizados: " << numCruzamentos
-              << "\n - Mutações aplicadas: " << numMutacoes
-              << "\n - Cópias diretas: " << numCopias
-              << "\n - Tamanho da população: " << novaGeracao.size() << std::endl;
-    
-    // Análise de diversidade
-    analisarDiversidade(novaGeracao);
-    
-    individuos = std::move(novaGeracao);
-    geracao++;
+    catch (const std::exception& e) {
+        Logger::log(Logger::Nivel::ERROR, 
+            "Erro fatal durante evolução: " + std::string(e.what()));
+        throw;
+    }
 }
 
 void Populacao::analisarDiversidade(const std::vector<Rede>& populacao) {
@@ -210,27 +212,85 @@ Rede* Populacao::selecaoTorneio(int tamanhoTorneio) {
 }
 
 Rede Populacao::cruzarRedes(const Rede& rede1, const Rede& rede2) {
-    // Criar uma nova rede com a mesma estrutura básica
-    Rede filho(0, 0); // Os números serão ignorados pois vamos copiar a estrutura
-    
-    // Copiar nós usando os novos métodos
-    filho.definirNos(rede1.obterNos());
-    
-    // Cruzar conexões
-    const auto& conexoes1 = rede1.obterConexoes();
-    const auto& conexoes2 = rede2.obterConexoes();
-    
-    std::vector<Conexao> novasConexoes;
-    for (size_t i = 0; i < conexoes1.size(); i++) {
-        if (rand() % 2 == 0) {
-            novasConexoes.push_back(conexoes1[i]);
-        } else {
-            novasConexoes.push_back(conexoes2[i]);
-        }
+    // Validar redes antes do cruzamento
+    if (!Validador::validarRede(rede1) || !Validador::validarRede(rede2)) {
+        Logger::log(Logger::Nivel::ERROR, "Tentativa de cruzar redes inválidas");
+        throw std::runtime_error("Redes inválidas para cruzamento");
     }
+
+    // Criar filho
+    Rede filho(0, 0);
     
-    filho.definirConexoes(novasConexoes);
-    return filho;
+    try {
+        // Copiar nós
+        std::vector<No> nosFilho;
+        auto nosRede1 = rede1.obterNos();
+        auto nosRede2 = rede2.obterNos();
+        
+        // Garantir que todos os nós necessários sejam copiados
+        std::set<int> idsNos;
+        for (const auto& no : nosRede1) idsNos.insert(no.id);
+        for (const auto& no : nosRede2) idsNos.insert(no.id);
+        
+        for (int id : idsNos) {
+            auto noRede1 = std::find_if(nosRede1.begin(), nosRede1.end(),
+                [id](const No& no) { return no.id == id; });
+                
+            auto noRede2 = std::find_if(nosRede2.begin(), nosRede2.end(),
+                [id](const No& no) { return no.id == id; });
+                
+            if (noRede1 != nosRede1.end()) {
+                nosFilho.push_back(*noRede1);
+            } else if (noRede2 != nosRede2.end()) {
+                nosFilho.push_back(*noRede2);
+            }
+        }
+        
+        filho.definirNos(nosFilho);
+        
+        // Cruzar conexões com verificação de compatibilidade
+        std::vector<Conexao> conexoesFilho;
+        auto conexoesRede1 = rede1.obterConexoes();
+        auto conexoesRede2 = rede2.obterConexoes();
+        
+        for (const auto& conexao : conexoesRede1) {
+            if (conexao.ativo && rand() % 2 == 0) {
+                // Verificar se os nós existem no filho
+                if (std::find_if(nosFilho.begin(), nosFilho.end(),
+                    [&](const No& no) { return no.id == conexao.deNo; }) != nosFilho.end() &&
+                    std::find_if(nosFilho.begin(), nosFilho.end(),
+                    [&](const No& no) { return no.id == conexao.paraNo; }) != nosFilho.end()) {
+                    conexoesFilho.push_back(conexao);
+                }
+            }
+        }
+        
+        for (const auto& conexao : conexoesRede2) {
+            if (conexao.ativo && rand() % 2 == 0) {
+                // Verificar se os nós existem no filho
+                if (std::find_if(nosFilho.begin(), nosFilho.end(),
+                    [&](const No& no) { return no.id == conexao.deNo; }) != nosFilho.end() &&
+                    std::find_if(nosFilho.begin(), nosFilho.end(),
+                    [&](const No& no) { return no.id == conexao.paraNo; }) != nosFilho.end()) {
+                    conexoesFilho.push_back(conexao);
+                }
+            }
+        }
+        
+        filho.definirConexoes(conexoesFilho);
+        
+        // Validar filho antes de retornar
+        if (!Validador::validarRede(filho)) {
+            throw std::runtime_error("Filho gerado é inválido");
+        }
+        
+        return filho;
+    }
+    catch (const std::exception& e) {
+        Logger::log(Logger::Nivel::ERROR, 
+            "Erro durante cruzamento: " + std::string(e.what()));
+        throw;
+    }
 }
 
 void Populacao::selecao() {

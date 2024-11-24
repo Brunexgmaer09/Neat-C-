@@ -1,5 +1,5 @@
 #pragma once
-#include "Rede.h"
+#include "Rede.hpp"
 #include <SDL2/SDL.h>
 
 namespace NEAT {

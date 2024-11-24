@@ -1,4 +1,4 @@
-#include "../Headers/Configuracao.h"
+#include "../include/Configuracao.hpp"
 
 namespace NEAT {
 
